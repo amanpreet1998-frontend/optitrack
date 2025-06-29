@@ -1,29 +1,43 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
+
+// Zod schema for password form
+const passwordSchema = z
+  .object({
+    password: z.string().min(6, { message: "Password must be at least 6 characters." }),
+    confirmPassword: z.string().min(6),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match.",
+    path: ["confirmPassword"],
+  });
+
+type PasswordFormData = z.infer<typeof passwordSchema>;
 
 export default function SetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [serverError, setServerError] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<PasswordFormData>({
+    resolver: zodResolver(passwordSchema),
+  });
 
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-
+  const onSubmit = async (data: PasswordFormData) => {
     try {
       const res = await fetch("http://localhost:5000/api/set-password", {
         method: "POST",
@@ -31,12 +45,12 @@ export default function SetPasswordForm() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token, password: data.password }),
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to set password");
+        const error = await res.json();
+        throw new Error(error.message || "Failed to set password");
       }
 
       setSuccess("Password set successfully! Redirecting...");
@@ -44,7 +58,7 @@ export default function SetPasswordForm() {
         router.push("/login");
       }, 2000);
     } catch (err: any) {
-      setError(err.message);
+      setServerError(err.message);
     }
   };
 
@@ -55,25 +69,34 @@ export default function SetPasswordForm() {
           <h2 className="text-2xl font-bold">Set Your Password</h2>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              type="password"
-              placeholder="New Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <Input
-              type="password"
-              placeholder="Confirm Password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-            />
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <div>
+              <Input
+                type="password"
+                placeholder="New Password"
+                {...register("password")}
+              />
+              {errors.password && (
+                <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>
+              )}
+            </div>
+
+            <div>
+              <Input
+                type="password"
+                placeholder="Confirm Password"
+                {...register("confirmPassword")}
+              />
+              {errors.confirmPassword && (
+                <p className="text-xs text-red-500 mt-1">{errors.confirmPassword.message}</p>
+              )}
+            </div>
+
             <Button type="submit" className="w-full">
               Set Password
             </Button>
-            {error && <p className="text-red-600 text-sm text-center">{error}</p>}
+
+            {serverError && <p className="text-red-600 text-sm text-center">{serverError}</p>}
             {success && <p className="text-green-600 text-sm text-center">{success}</p>}
           </form>
         </CardContent>
